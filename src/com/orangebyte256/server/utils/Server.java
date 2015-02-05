@@ -1,44 +1,83 @@
 package com.orangebyte256.server.utils;
 
-/**
- * Created by dmitry on 2/3/2015.
- */
-
+import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.io.InputStreamReader;
-import java.io.BufferedReader;
 
-class SocketProcessor implements Runnable {
+import java.util.concurrent.Callable;
+import com.orangebyte256.server.utils.Command;
+import com.orangebyte256.server.utils.Factory;
 
+class SocketProcessor implements Runnable
+{
     private Socket s;
-    private InputStream is;
-//    private OutputStream os;
+    private InputStream inputStream;
+    private OutputStream outputStream;
+    private String ConnectionName;
 
-    SocketProcessor(Socket s){
+    private boolean Autorize(String s)
+    {
+        String names[] = s.split("//");
+        if(names.length != 2)
+        {
+            System.out.print("Wrong authtorization, try again");
+            return false;
+        }
+        ConnectionName = names[0];
+        return true;
+    }
+    private String ReadMessage(BufferedReader reader)
+    {
+        int count = 0;
+        try {
+            count = reader.read();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+        char []temp = new char[count];
+        try {
+            reader.read(temp, 0, count);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return temp.toString();
+    }
+    private void WriteMessage(OutputStream outputStream, String message)
+    {
+        message = Character.toChars(message.length()) + message;
+        try {
+            outputStream.write(message.getBytes());
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+    SocketProcessor(Socket s)
+    {
         this.s = s;
         try
         {
-            this.is = s.getInputStream();
+            inputStream = s.getInputStream();
+            outputStream = s.getOutputStream();
         }
         catch(Throwable e)
         {
             System.out.print("error,trust me");
         }
-//        this.os = s.getOutputStream();
     }
 
     public void run()
     {
         try
         {
-/*            readInputHeaders();
-            writeResponse("<html><body><h1>Hello from Habrahabr</h1></body></html>");
-            */
-            BufferedReader br = new BufferedReader(new InputStreamReader(is));
-            while(true)
+            BufferedReader br = new BufferedReader(new InputStreamReader(inputStream));
+            String temp = ReadMessage(br);
+            while(!Autorize(temp))
+            {
+                WriteMessage(outputStream, "Repeat");
+            }
+            WriteMessage(outputStream, "Ok");
+/*            while(true)
             {
                 String s = br.readLine();
                 if(s == null || s.trim().length() == 0)
@@ -49,6 +88,7 @@ class SocketProcessor implements Runnable {
             }
         } catch (Throwable t) {
                 /*do nothing*/
+
         } finally {
             try {
                 s.close();
@@ -98,7 +138,6 @@ public class Server
         }
         catch (Throwable e)
         {
-            d;
             System.err.println("Client accepted");
         }
     }
