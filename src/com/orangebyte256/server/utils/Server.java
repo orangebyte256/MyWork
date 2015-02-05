@@ -98,6 +98,7 @@ public class Server
         }
         catch (Throwable e)
         {
+            d;
             System.err.println("Client accepted");
         }
     }
