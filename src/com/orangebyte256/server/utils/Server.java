@@ -4,9 +4,11 @@ import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
 
+import java.util.ArrayList;
 import java.util.concurrent.Callable;
 import com.orangebyte256.server.utils.Command;
 import com.orangebyte256.server.utils.Factory;
+import com.sun.xml.internal.ws.util.ByteArrayBuffer;
 
 class SocketProcessor implements Runnable
 {
@@ -17,7 +19,7 @@ class SocketProcessor implements Runnable
 
     private boolean Autorize(String s)
     {
-        String names[] = s.split("//");
+        String names[] = s.split(",");
         if(names.length != 2)
         {
             System.out.print("Wrong authtorization, try again");
@@ -28,26 +30,36 @@ class SocketProcessor implements Runnable
     }
     private String ReadMessage(BufferedReader reader)
     {
-        int count = 0;
-        try {
-            count = reader.read();
+        String result = "";
+        String d = "ga12";
+        try
+        {
+            int count = reader.read();
+            do {
+                char buf[] = new char[count - result.length()];
+                int readed = reader.read(buf, 0, count - result.length());
+                result += (new String(buf)).substring(0, readed);
+            }
+            while(result.length() != count);
         } catch (IOException e) {
             e.printStackTrace();
         }
-
-        char []temp = new char[count];
-        try {
-            reader.read(temp, 0, count);
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-        return temp.toString();
+        return result;
     }
     private void WriteMessage(OutputStream outputStream, String message)
     {
-        message = Character.toChars(message.length()) + message;
+//        message = Character.toChars(message.length()) + message;
+//        byte[] b = message.getBytes();
         try {
-            outputStream.write(message.getBytes());
+//            PrintWriter writer = new PrintWriter(outputStream, true);
+//            writer.println(message);
+            byte[] data = new byte[message.length() + 2];
+            byte[] message_byte = message.getBytes();
+            data[0] = (byte)(message.length() / 256);
+            data[1] = (byte)(message.length() % 256);
+            System.arraycopy(message_byte, 0, data, 2, message.length());
+            outputStream.write(data);
+            outputStream.flush();
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -70,13 +82,22 @@ class SocketProcessor implements Runnable
     {
         try
         {
-            BufferedReader br = new BufferedReader(new InputStreamReader(inputStream));
-            String temp = ReadMessage(br);
+            BufferedReader br = null;
+            try {
+                br = new BufferedReader(new InputStreamReader(inputStream, "UTF16"));
+            } catch (UnsupportedEncodingException e) {
+                e.printStackTrace();
+            }
+/*            BufferedReader in = new BufferedReader(
+                    new InputStreamReader(
+                            new FileInputStream(fileDir), "UTF8"));
+*/
+/*            String temp = ReadMessage(br);
             while(!Autorize(temp))
             {
                 WriteMessage(outputStream, "Repeat");
             }
-            WriteMessage(outputStream, "Ok");
+*/            WriteMessage(outputStream, "Okey, write this ok 12122");
 /*            while(true)
             {
                 String s = br.readLine();
