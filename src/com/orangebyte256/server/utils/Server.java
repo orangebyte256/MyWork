@@ -5,39 +5,38 @@ import java.net.ServerSocket;
 import java.net.Socket;
 
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.Callable;
 import com.orangebyte256.server.utils.Command;
 import com.orangebyte256.server.utils.Factory;
 import com.sun.xml.internal.ws.util.ByteArrayBuffer;
 
-class SocketProcessor implements Runnable
+
+class Connection
 {
-    private Socket s;
     private InputStream inputStream;
     private OutputStream outputStream;
-    private String ConnectionName;
-
-    private boolean Autorize(String s)
+    BufferedReader bufferedReader;
+     Connection(InputStream theInputStream, OutputStream theOutputStream)
     {
-        String names[] = s.split(",");
-        if(names.length != 2)
-        {
-            System.out.print("Wrong authtorization, try again");
-            return false;
+        inputStream = theInputStream;
+        outputStream = theOutputStream;
+        try {
+            bufferedReader = new BufferedReader(new InputStreamReader(inputStream, "UTF16"));
+        } catch (UnsupportedEncodingException e) {
+            e.printStackTrace();
         }
-        ConnectionName = names[0];
-        return true;
     }
-    private String ReadMessage(BufferedReader reader)
+    String ReadMessage()
     {
         String result = "";
-        String d = "ga12";
         try
         {
-            int count = reader.read();
+            int count = bufferedReader.read();
             do {
                 char buf[] = new char[count - result.length()];
-                int readed = reader.read(buf, 0, count - result.length());
+                int readed = bufferedReader.read(buf, 0, count - result.length());
                 result += (new String(buf)).substring(0, readed);
             }
             while(result.length() != count);
@@ -46,13 +45,10 @@ class SocketProcessor implements Runnable
         }
         return result;
     }
-    private void WriteMessage(OutputStream outputStream, String message)
+    void WriteMessage(String message)
     {
-//        message = Character.toChars(message.length()) + message;
-//        byte[] b = message.getBytes();
-        try {
-//            PrintWriter writer = new PrintWriter(outputStream, true);
-//            writer.println(message);
+        try
+        {
             byte[] data = new byte[message.length() + 2];
             byte[] message_byte = message.getBytes();
             data[0] = (byte)(message.length() / 256);
@@ -64,13 +60,91 @@ class SocketProcessor implements Runnable
             e.printStackTrace();
         }
     }
-    SocketProcessor(Socket s)
+}
+
+class OutputConnection
+{
+    private Connection connection;
+    OutputConnection(InputStream theInputStream, OutputStream theOutputStream)
+    {
+        connection = new Connection(theInputStream, theOutputStream);
+    }
+    void Send()
+    {
+        while(true)
+        {
+            connection.WriteMessage("1");
+            String result = connection.ReadMessage();
+            if(result == "ok")
+            {
+                break;
+            }
+        }
+    }
+}
+
+class InputConnection extends Thread
+{
+    private Connection connection;
+    private HashMap<String, OutputConnection> outputConnectionHashMap;
+    private String name;
+    InputConnection(InputStream theInputStream, OutputStream theOutputStream,
+                    HashMap<String, OutputConnection> theOutputConnectionHashMap, String theName)
+    {
+        connection = new Connection(theInputStream, theOutputStream);
+        outputConnectionHashMap = theOutputConnectionHashMap;
+        name = theName;
+    }
+    @Override
+    public void run()
+    {
+        while(true)
+        {
+            String s = connection.ReadMessage();
+            outputConnectionHashMap.get(s).Send();
+        }
+    }
+}
+
+class MainSocket extends Thread
+{
+    private Socket s;
+    private  Connection connection;
+    private InputStream inputStream;
+    private OutputStream outputStream;
+    private String connectionName;
+    private Command signalType;
+    private ArrayList<InputConnection> inputConnectionArrayList;
+    private HashMap<String, OutputConnection> outputConnectionHashMap;
+    private boolean Autorize(String s)
+    {
+        byte command = (byte)s.charAt(0);
+        if(command > Command.values().length)
+        {
+            System.out.print("Wrong authtorization, try again");
+            return false;
+        }
+        signalType = Command.values()[command];
+        s = s.substring(1, s.length());
+        String names[] = s.split(",");
+        if(names.length != 2)
+        {
+            System.out.print("Wrong authtorization, try again");
+            return false;
+        }
+        connectionName = names[0];
+        return true;
+    }
+    MainSocket(Socket s, ArrayList<InputConnection> theInputConnectionArrayList, HashMap<String, OutputConnection> theOutputConnectionHashMap)
     {
         this.s = s;
         try
         {
-            inputStream = s.getInputStream();
-            outputStream = s.getOutputStream();
+            InputStream inputStream = s.getInputStream();
+            OutputStream outputStream = s.getOutputStream();
+            connection = new Connection(inputStream, outputStream);
+            inputConnectionArrayList = theInputConnectionArrayList;
+            outputConnectionHashMap = theOutputConnectionHashMap;
         }
         catch(Throwable e)
         {
@@ -82,69 +156,39 @@ class SocketProcessor implements Runnable
     {
         try
         {
-            BufferedReader br = null;
-            try {
-                br = new BufferedReader(new InputStreamReader(inputStream, "UTF16"));
-            } catch (UnsupportedEncodingException e) {
-                e.printStackTrace();
-            }
-/*            BufferedReader in = new BufferedReader(
-                    new InputStreamReader(
-                            new FileInputStream(fileDir), "UTF8"));
-*/
-/*            String temp = ReadMessage(br);
+            String temp = connection.ReadMessage();
             while(!Autorize(temp))
             {
-                WriteMessage(outputStream, "Repeat");
+                connection.WriteMessage("Repeat");
             }
-*/            WriteMessage(outputStream, "Okey, write this ok 12122");
-/*            while(true)
+            connection.WriteMessage("Okey");
+            if(signalType == Command.CONNECT_GET)
             {
-                String s = br.readLine();
-                if(s == null || s.trim().length() == 0)
-                {
-                    break;
-                }
-                System.out.print(s);
+                outputConnectionHashMap.put(connectionName, new OutputConnection(inputStream, outputStream));
             }
-        } catch (Throwable t) {
-                /*do nothing*/
-
+            else
+            {
+                InputConnection inputConnection = new InputConnection(inputStream, outputStream,
+                        outputConnectionHashMap, connectionName);
+                inputConnection.run();
+                inputConnectionArrayList.add(inputConnection);
+            }
         } finally {
-            try {
+/*            try {
                 s.close();
             } catch (Throwable t) {
-                    /*do nothing*/
-            }
-        }
+                    /*do nothing
+           }
+*/        }
         System.err.println("Client processing finished");
     }
 
-/*    private void writeResponse(String s) throws Throwable {
-        String response = "HTTP/1.1 200 OK\r\n" +
-                "Server: YarServer/2009-09-09\r\n" +
-                "Content-Type: text/html\r\n" +
-                "Content-Length: " + s.length() + "\r\n" +
-                "Connection: close\r\n\r\n";
-        String result = response + s;
-        os.write(result.getBytes());
-        os.flush();
-    }
-
-    private void readInputHeaders() throws Throwable {
-        BufferedReader br = new BufferedReader(new InputStreamReader(is));
-        while(true) {
-            String s = br.readLine();
-            if(s == null || s.trim().length() == 0) {
-                break;
-            }
-        }
-    }
-    */
 }
 
 public class Server
 {
+    private ArrayList<InputConnection> inputConnections = new ArrayList<InputConnection>();
+    private HashMap<String, OutputConnection> outputConnections = new HashMap<String, OutputConnection>();
     public Server(int port)
     {
         try
@@ -154,7 +198,7 @@ public class Server
             {
                 Socket s = ss.accept();
                 System.err.println("Client accepted");
-                new Thread(new SocketProcessor(s)).start();
+                new MainSocket(s, inputConnections, outputConnections).run();
             }
         }
         catch (Throwable e)
